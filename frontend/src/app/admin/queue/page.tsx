@@ -2,7 +2,9 @@
 
 import React, { useEffect, useState, useRef } from "react";
 import Link from "next/link";
-import { Ticket, fetchApi } from "@/lib/api";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/context/AuthContext";
+import { Ticket, fetchApi, getWebSocketUrl } from "@/lib/api";
 import { PriorityBadge, StatusBadge, CategoryBadge } from "@/components/TicketBadge";
 import { 
   LayoutDashboard, 
@@ -15,10 +17,14 @@ import {
   UserCheck, 
   AlertTriangle,
   BookOpen,
-  ArrowRight
+  ArrowRight,
+  Shield,
+  Calendar
 } from "lucide-react";
 
 export default function AdminTicketQueuePage() {
+  const router = useRouter();
+  const { user, isLoading } = useAuth();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -28,18 +34,21 @@ export default function AdminTicketQueuePage() {
   const [statusFilter, setStatusFilter] = useState("All");
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [priorityFilter, setPriorityFilter] = useState("All");
+  const [dateFilter, setDateFilter] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState("urgency");
 
   const socketRef = useRef<WebSocket | null>(null);
 
   const loadData = async () => {
+    if (!user || user.role !== "admin") return;
     try {
       setLoading(true);
       const params = new URLSearchParams();
       if (statusFilter !== "All") params.append("status", statusFilter);
       if (categoryFilter !== "All") params.append("category", categoryFilter);
       if (priorityFilter !== "All") params.append("priority", priorityFilter);
+      if (dateFilter !== "All") params.append("date_filter", dateFilter);
       if (searchQuery.trim()) params.append("search", searchQuery.trim());
       params.append("sort_by", sortBy);
 
@@ -50,20 +59,30 @@ export default function AdminTicketQueuePage() {
 
       setTickets(ticketsData);
       setStats(statsData);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to fetch admin queue", err);
+      if (err?.message?.includes("Access restricted") || err?.message?.includes("403")) {
+        router.replace("/admin");
+      }
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
+    if (isLoading) return;
+    if (!user || user.role !== "admin") {
+      router.replace("/admin");
+      return;
+    }
     loadData();
-  }, [statusFilter, categoryFilter, priorityFilter, sortBy]);
+  }, [statusFilter, categoryFilter, priorityFilter, dateFilter, sortBy, user, isLoading, router]);
 
   // Connect WebSocket for live updates
   useEffect(() => {
-    const ws = new WebSocket("ws://localhost:8000/api/v1/ws/admin");
+    if (!user || user.role !== "admin") return;
+
+    const ws = new WebSocket(getWebSocketUrl("/ws/admin"));
     socketRef.current = ws;
 
     ws.onopen = () => {
@@ -87,12 +106,21 @@ export default function AdminTicketQueuePage() {
     return () => {
       ws.close();
     };
-  }, []);
+  }, [user]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     loadData();
   };
+
+  if (isLoading || !user || user.role !== "admin") {
+    return (
+      <div className="max-w-7xl mx-auto px-4 py-20 text-center text-slate-500">
+        <div className="inline-block animate-spin h-8 w-8 border-4 border-purple-600 border-t-transparent rounded-full mb-3" />
+        <p className="text-sm font-medium">Verifying Super Admin access...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
@@ -230,6 +258,21 @@ export default function AdminTicketQueuePage() {
                 <option value="High">High</option>
                 <option value="Medium">Medium</option>
                 <option value="Low">Low</option>
+              </select>
+            </div>
+
+            {/* Date Filter */}
+            <div className="flex items-center gap-1.5">
+              <Calendar className="h-3.5 w-3.5 text-slate-400" />
+              <select
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+                className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 font-medium outline-none focus:ring-2 focus:ring-teal-500"
+              >
+                <option value="All">All Dates</option>
+                <option value="Today">Today</option>
+                <option value="Last 7 Days">Last 7 Days</option>
+                <option value="Last 30 Days">Last 30 Days</option>
               </select>
             </div>
 

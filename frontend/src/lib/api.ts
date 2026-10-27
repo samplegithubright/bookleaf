@@ -1,4 +1,26 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+
+export function getWebSocketUrl(path: string): string {
+  // Explicit WebSocket URL override
+  if (process.env.NEXT_PUBLIC_WS_URL) {
+    const base = process.env.NEXT_PUBLIC_WS_URL.replace(/\/$/, "");
+    const cleanPath = path.startsWith("/") ? path : `/${path}`;
+    return `${base}${cleanPath}`;
+  }
+
+  // Derive WebSocket URL from API_BASE_URL (http -> ws, https -> wss)
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, "");
+    const wsProto = apiUrl.startsWith("https://") ? "wss://" : "ws://";
+    const hostAndPath = apiUrl.replace(/^https?:\/\//, "");
+    const cleanPath = path.startsWith("/") ? path : `/${path}`;
+    return `${wsProto}${hostAndPath}${cleanPath}`;
+  }
+
+  // Fallback to local development
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+  return `ws://localhost:8000/api/v1${cleanPath}`;
+}
 
 export interface User {
   id: string;
@@ -94,6 +116,11 @@ export async function fetchApi<T>(
   });
 
   if (!response.ok) {
+    if (response.status === 401 && typeof window !== "undefined" && !endpoint.includes("/auth/login")) {
+      localStorage.removeItem("bookleaf_token");
+      localStorage.removeItem("bookleaf_user");
+    }
+
     let errorDetail = "An unexpected error occurred.";
     try {
       const errorData = await response.json();

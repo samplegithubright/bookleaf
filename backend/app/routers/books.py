@@ -12,13 +12,29 @@ async def get_my_books(current_user: dict = Depends(get_current_user)):
     role = current_user.get("role")
     author_id = current_user.get("author_id")
     
-    if role != "author" or not author_id:
+    # Allow Super Admins to view all books across the catalog
+    if role == "admin":
+        cursor = db.books.find({})
+        books = []
+        async for doc in cursor:
+            doc["id"] = str(doc.get("_id"))
+            books.append(BookResponse(**doc))
+        return books
+
+    # Resolve author_id from authors collection if not stored in user doc
+    if not author_id:
+        author_doc = await db.authors.find_one({"email": current_user.get("email")})
+        if author_doc:
+            author_id = author_doc.get("author_id")
+
+    if role != "author" and not author_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only authors can view their published books via this endpoint."
         )
         
-    cursor = db.books.find({"author_id": author_id})
+    query = {"author_id": author_id} if author_id else {}
+    cursor = db.books.find(query)
     books = []
     async for doc in cursor:
         doc["id"] = str(doc.get("_id"))

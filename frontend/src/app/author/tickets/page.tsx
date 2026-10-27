@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
-import { Ticket, fetchApi } from "@/lib/api";
+import { Ticket, fetchApi, getWebSocketUrl } from "@/lib/api";
 import { PriorityBadge, StatusBadge, CategoryBadge } from "@/components/TicketBadge";
 import { 
   MessageSquare, 
@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 
 export default function AuthorTicketsPage() {
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [wsConnected, setWsConnected] = useState(false);
@@ -36,11 +36,17 @@ export default function AuthorTicketsPage() {
   };
 
   useEffect(() => {
+    if (isLoading) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
     loadTickets();
 
     // Setup Real-time WebSocket connection
     if (user?.author_id) {
-      const wsUrl = `ws://localhost:8000/api/v1/ws/author/${user.author_id}`;
+      const wsUrl = getWebSocketUrl(`/ws/author/${user.author_id}`);
       const ws = new WebSocket(wsUrl);
       socketRef.current = ws;
 
@@ -70,7 +76,7 @@ export default function AuthorTicketsPage() {
         ws.close();
       };
     }
-  }, [user]);
+  }, [user, isLoading]);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">

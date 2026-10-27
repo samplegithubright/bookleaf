@@ -19,7 +19,7 @@ import Link from "next/link";
 function SubmitTicketForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
 
   const preselectedBookId = searchParams.get("book_id") || "General / Account Level";
 
@@ -32,6 +32,8 @@ function SubmitTicketForm() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (isLoading || !user) return;
+
     async function loadBooks() {
       try {
         const data = await fetchApi<Book[]>("/books/my-books");
@@ -41,7 +43,7 @@ function SubmitTicketForm() {
       }
     }
     loadBooks();
-  }, [user]);
+  }, [user, isLoading]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

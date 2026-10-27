@@ -12,21 +12,28 @@ import {
   AlertCircle, 
   CheckCircle2, 
   Layers, 
-  ExternalLink,
   MessageSquarePlus,
-  ShoppingBag
+  ShoppingBag,
+  Shield
 } from "lucide-react";
 
 export default function AuthorBooksPage() {
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
   const [books, setBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (isLoading) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
     async function loadBooks() {
       try {
         setLoading(true);
+        setError(null);
         const data = await fetchApi<Book[]>("/books/my-books");
         setBooks(data);
       } catch (err: any) {
@@ -37,13 +44,66 @@ export default function AuthorBooksPage() {
       }
     }
     loadBooks();
-  }, [user]);
+  }, [user, isLoading]);
 
   // Aggregate author stats
   const totalEarned = books.reduce((acc, b) => acc + (b.total_royalty_earned || 0), 0);
   const totalPaid = books.reduce((acc, b) => acc + (b.royalty_paid || 0), 0);
   const totalPending = books.reduce((acc, b) => acc + (b.royalty_pending || 0), 0);
   const totalCopies = books.reduce((acc, b) => acc + (b.total_copies_sold || 0), 0);
+
+  if (isLoading || (loading && books.length === 0 && !error)) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 py-20 text-center text-slate-500">
+        <div className="inline-block animate-spin h-8 w-8 border-4 border-teal-500 border-t-transparent rounded-full mb-3" />
+        <p className="text-sm font-medium">Loading your book catalog & royalty data...</p>
+      </div>
+    );
+  }
+
+  if (!user && !isLoading) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 py-16 text-center">
+        <div className="max-w-md mx-auto bg-white rounded-2xl border border-slate-200 p-8 shadow-sm">
+          <BookOpen className="h-10 w-10 text-teal-600 mx-auto mb-3" />
+          <h2 className="text-lg font-bold text-slate-900 mb-1">Sign In Required</h2>
+          <p className="text-xs text-slate-500 mb-4">Please log in to access your published titles and royalties.</p>
+          <Link
+            href="/login"
+            className="inline-block px-5 py-2.5 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-semibold shadow-md transition-all"
+          >
+            Go to Sign In
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (error && books.length === 0) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 py-16 text-center">
+        <div className="max-w-md mx-auto bg-white rounded-2xl border border-rose-200 p-8 shadow-sm">
+          <AlertCircle className="h-10 w-10 text-rose-500 mx-auto mb-3" />
+          <h2 className="text-lg font-bold text-slate-900 mb-1">Unable to Load Catalog</h2>
+          <p className="text-xs text-slate-500 mb-4">{error}</p>
+          <div className="flex justify-center gap-3">
+            <button
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors"
+            >
+              Retry
+            </button>
+            <Link
+              href="/login"
+              className="px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-semibold transition-colors"
+            >
+              Sign In Again
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -53,7 +113,9 @@ export default function AuthorBooksPage() {
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-500/20 border border-teal-500/30 text-teal-300 text-xs font-semibold mb-3">
               <span className="w-2 h-2 rounded-full bg-teal-400"></span>
-              Author Account: {user?.author_id || "AUTH001"}
+              {user?.role === "admin"
+                ? "Super Admin View (All Catalog Titles)"
+                : `Author Account: ${user?.author_id || "AUTH"}`}
             </div>
             <h1 className="text-3xl font-extrabold tracking-tight">
               Welcome back, {user?.name || "Author"}
@@ -64,6 +126,15 @@ export default function AuthorBooksPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            {user?.role === "admin" && (
+              <Link
+                href="/admin/queue"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-sm shadow-md transition-all"
+              >
+                <Shield className="h-4 w-4" />
+                Super Admin Dashboard
+              </Link>
+            )}
             <Link
               href="/author/tickets/new"
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 font-semibold text-sm shadow-md transition-all"

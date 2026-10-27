@@ -23,6 +23,7 @@ async def get_ticket_queue(
     assigned_to: Optional[str] = Query(None, description="Filter by assigned admin email"),
     search: Optional[str] = Query(None, description="Search by subject, description, author name, or ticket #"),
     sort_by: Optional[str] = Query("urgency", description="urgency, oldest, newest"),
+    date_filter: Optional[str] = Query(None, description="Filter by date: All, Today, Last 7 Days, Last 30 Days"),
     admin_user: dict = Depends(get_current_admin)
 ):
     db = get_database()
@@ -39,6 +40,17 @@ async def get_ticket_queue(
             query["assigned_to"] = None
         elif assigned_to != "All":
             query["assigned_to"] = assigned_to
+
+    if date_filter and date_filter != "All":
+        from datetime import timedelta
+        now = datetime.utcnow()
+        if date_filter == "Today":
+            start_of_today = datetime(now.year, now.month, now.day)
+            query["created_at"] = {"$gte": start_of_today}
+        elif date_filter == "Last 7 Days":
+            query["created_at"] = {"$gte": now - timedelta(days=7)}
+        elif date_filter == "Last 30 Days":
+            query["created_at"] = {"$gte": now - timedelta(days=30)}
 
     if search:
         search_regex = {"$regex": search, "$options": "i"}

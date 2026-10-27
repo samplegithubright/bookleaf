@@ -46,14 +46,44 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS Middleware
+# CORS Middleware - Production-Ready for Vercel & Localhost
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
+    allow_origin_regex=r"https://.*\.vercel\.app|http://localhost:\d+|http://127\.0\.0\.1:\d+",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+from pymongo.errors import ServerSelectionTimeoutError, PyMongoError
+
+# Specific Exception Handler for MongoDB connection timeouts / DNS failures
+@app.exception_handler(ServerSelectionTimeoutError)
+async def mongo_timeout_handler(request: Request, exc: ServerSelectionTimeoutError):
+    logger.error(f"MongoDB connection timeout/unreachable on {request.method} {request.url.path}: {exc}")
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={
+            "error": "DatabaseUnavailable",
+            "message": "Cannot reach the MongoDB database cluster. Please check your internet connection, DNS resolution, or verify your IP is whitelisted in MongoDB Atlas.",
+            "detail": str(exc),
+            "path": request.url.path
+        }
+    )
+
+@app.exception_handler(PyMongoError)
+async def pymongo_error_handler(request: Request, exc: PyMongoError):
+    logger.error(f"Database error on {request.method} {request.url.path}: {exc}")
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "error": "DatabaseError",
+            "message": "A database operation failed. Please try again.",
+            "detail": str(exc),
+            "path": request.url.path
+        }
+    )
 
 # Global Exception Handler for meaningful error responses (not generic 500s)
 @app.exception_handler(Exception)
@@ -79,8 +109,20 @@ app.include_router(ws.router, prefix=settings.API_V1_STR)
 
 @app.get("/health", tags=["System"])
 async def health_check():
+    db_status = "connected"
+    try:
+        from app.database import get_database
+        db = get_database()
+        if db is not None:
+            await db.command("ping")
+        else:
+            db_status = "uninitialized"
+    except Exception as e:
+        db_status = f"warning: {str(e)}"
+
     return {
         "status": "healthy",
+        "database": db_status,
         "service": "BookLeaf Author Support Portal",
         "version": "1.0.0"
     }

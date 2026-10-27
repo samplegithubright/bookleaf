@@ -36,6 +36,14 @@ async def create_ticket(ticket_in: TicketCreate, current_user: dict = Depends(ge
     db = get_database()
     author_id = current_user.get("author_id")
     if not author_id:
+        author_doc = await db.authors.find_one({"email": current_user.get("email")})
+        if author_doc:
+            author_id = author_doc.get("author_id")
+            
+    if not author_id and current_user.get("role") == "admin":
+        author_id = "AUTH_ADMIN"
+
+    if not author_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Current user is not linked to an author profile."
@@ -127,6 +135,20 @@ async def create_ticket(ticket_in: TicketCreate, current_user: dict = Depends(ge
 async def get_my_tickets(current_user: dict = Depends(get_current_user)):
     db = get_database()
     author_id = current_user.get("author_id")
+    role = current_user.get("role")
+
+    if role == "admin":
+        cursor = db.tickets.find({}).sort("created_at", -1).limit(50)
+        tickets = []
+        async for doc in cursor:
+            tickets.append(TicketResponse(**format_ticket(doc, is_admin=True)))
+        return tickets
+
+    if not author_id:
+        author_doc = await db.authors.find_one({"email": current_user.get("email")})
+        if author_doc:
+            author_id = author_doc.get("author_id")
+
     if not author_id:
         raise HTTPException(status_code=400, detail="User not linked to an author profile")
         

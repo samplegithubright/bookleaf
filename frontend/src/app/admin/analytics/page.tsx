@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/context/AuthContext";
 import { fetchApi } from "@/lib/api";
 import { 
   BarChart3, 
@@ -15,23 +17,43 @@ import {
 } from "lucide-react";
 
 export default function AdminAnalyticsPage() {
+  const router = useRouter();
+  const { user, isLoading } = useAuth();
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (isLoading) return;
+    if (!user || user.role !== "admin") {
+      router.replace("/admin");
+      return;
+    }
+
     async function loadStats() {
       try {
         setLoading(true);
         const data = await fetchApi<any>("/admin/stats");
         setStats(data);
-      } catch (err) {
+      } catch (err: any) {
         console.error("Failed to load analytics", err);
+        if (err?.message?.includes("Access restricted") || err?.message?.includes("403")) {
+          router.replace("/admin");
+        }
       } finally {
         setLoading(false);
       }
     }
     loadStats();
-  }, []);
+  }, [user, isLoading, router]);
+
+  if (isLoading || !user || user.role !== "admin") {
+    return (
+      <div className="max-w-7xl mx-auto px-4 py-20 text-center text-slate-500">
+        <div className="inline-block animate-spin h-8 w-8 border-4 border-purple-600 border-t-transparent rounded-full mb-3" />
+        <p className="text-sm font-medium">Verifying Super Admin access...</p>
+      </div>
+    );
+  }
 
   if (loading || !stats) {
     return (

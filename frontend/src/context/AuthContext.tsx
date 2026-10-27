@@ -8,7 +8,7 @@ interface AuthContextType {
   user: User | null;
   token: string | null;
   isLoading: boolean;
-  login: (email: string, role?: string) => Promise<void>;
+  login: (email: string, password?: string, redirect?: boolean) => Promise<void>;
   logout: () => void;
   quickSwitch: (email: string) => Promise<void>;
 }
@@ -22,34 +22,106 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
   useEffect(() => {
-    // Check local storage on mount
-    const savedToken = localStorage.getItem("bookleaf_token");
-    const savedUser = localStorage.getItem("bookleaf_user");
-    if (savedToken && savedUser) {
-      try {
-        setToken(savedToken);
-        setUser(JSON.parse(savedUser));
-      } catch (e) {
-        console.error("Failed to parse saved user", e);
+    let isMounted = true;
+
+    async function initAuth() {
+      const savedToken = typeof window !== "undefined" ? localStorage.getItem("bookleaf_token") : null;
+      const savedUser = typeof window !== "undefined" ? localStorage.getItem("bookleaf_user") : null;
+
+      if (savedToken && savedUser) {
+        try {
+          // Instantly populate from saved session on client mount
+          const parsed = JSON.parse(savedUser);
+          if (isMounted) {
+            setToken(savedToken);
+            setUser(parsed);
+            setIsLoading(false);
+          }
+
+          // Verify saved token against backend /auth/me in background
+          const me = await fetchApi<User>("/auth/me");
+          if (isMounted) {
+            setUser({
+              id: me.author_id || (me.role === "admin" ? "admin" : me.id),
+              email: me.email,
+              name: me.name,
+              role: me.role,
+              author_id: me.author_id,
+              city: me.city,
+              phone: me.phone,
+            });
+            return;
+          }
+        } catch (e) {
+          console.warn("Saved token verification failed, resetting auth session", e);
+          if (typeof window !== "undefined") {
+            localStorage.removeItem("bookleaf_token");
+            localStorage.removeItem("bookleaf_user");
+          }
+          if (isMounted) {
+            setUser(null);
+            setToken(null);
+            setIsLoading(false);
+          }
+          return;
+        }
       }
-    } else {
+
+      const hasLoggedOut = typeof window !== "undefined" ? localStorage.getItem("bookleaf_signed_out") : null;
+      const isAdminRoute = typeof window !== "undefined" && window.location.pathname.startsWith("/admin");
+      if (hasLoggedOut || isAdminRoute) {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+        return;
+      }
+
       // Default to Priya Sharma (AUTH001) for smooth evaluation experience
-      const defaultUser: User = {
-        id: "AUTH001",
-        email: "priya.sharma@email.com",
-        name: "Priya Sharma",
-        role: "author",
-        author_id: "AUTH001",
-        city: "Mumbai",
-        phone: "+91-98765-43210"
-      };
-      // Auto-login Priya Sharma
-      quickSwitch(defaultUser.email);
+      try {
+        const data = await fetchApi<{
+          access_token: string;
+          role: "author" | "admin";
+          author_id?: string | null;
+          email: string;
+          name: string;
+        }>("/auth/login", {
+          method: "POST",
+          body: JSON.stringify({ email: "priya.sharma@email.com", password: "password123" }),
+        });
+
+        const userObj: User = {
+          id: data.author_id || "admin",
+          email: data.email,
+          name: data.name,
+          role: data.role,
+          author_id: data.author_id,
+        };
+
+        if (isMounted) {
+          setToken(data.access_token);
+          setUser(userObj);
+          if (typeof window !== "undefined") {
+            localStorage.setItem("bookleaf_token", data.access_token);
+            localStorage.setItem("bookleaf_user", JSON.stringify(userObj));
+          }
+        }
+      } catch (err) {
+        console.error("Auto-login fallback failed:", err);
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
     }
-    setIsLoading(false);
+
+    initAuth();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
-  const login = async (email: string, password: string = "password123") => {
+  const login = async (email: string, password: string = "password123", redirect: boolean = true) => {
     setIsLoading(true);
     try {
       const data = await fetchApi<{
@@ -71,15 +143,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         author_id: data.author_id,
       };
 
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("bookleaf_signed_out");
+        localStorage.setItem("bookleaf_token", data.access_token);
+        localStorage.setItem("bookleaf_user", JSON.stringify(userObj));
+      }
+
       setToken(data.access_token);
       setUser(userObj);
-      localStorage.setItem("bookleaf_token", data.access_token);
-      localStorage.setItem("bookleaf_user", JSON.stringify(userObj));
 
-      if (data.role === "admin") {
-        router.push("/admin/queue");
-      } else {
-        router.push("/author/books");
+      if (redirect) {
+        if (data.role === "admin") {
+          router.replace("/admin/queue");
+        } else {
+          router.replace("/author/books");
+        }
       }
     } catch (err) {
       console.error("Login failed", err);
@@ -91,14 +169,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const quickSwitch = async (email: string) => {
     const password = email.includes("admin") ? "admin123" : "password123";
-    await login(email, password);
+    await login(email, password, true);
   };
 
   const logout = () => {
     setUser(null);
     setToken(null);
-    localStorage.removeItem("bookleaf_token");
-    localStorage.removeItem("bookleaf_user");
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("bookleaf_token");
+      localStorage.removeItem("bookleaf_user");
+      localStorage.setItem("bookleaf_signed_out", "true");
+    }
     router.push("/login");
   };
 

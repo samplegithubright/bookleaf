@@ -17,14 +17,14 @@ async def seed_database_if_empty(force: bool = False):
 
     logger.info("Starting database seed with bookleaf_sample_data.json...")
     
-    # Path to sample json - check multiple candidate locations
+    # Path to sample json - check self-contained backend candidate locations
     candidates = [
-        os.path.join(os.path.dirname(__file__), "..", "..", "..", "bookleaf_sample_data.json"),
+        os.path.join(os.path.dirname(__file__), "..", "data", "bookleaf_sample_data.json"),
         os.path.join(os.path.dirname(__file__), "..", "..", "bookleaf_sample_data.json"),
-        os.path.join(os.path.dirname(__file__), "..", "bookleaf_sample_data.json"),
+        os.path.join(os.path.dirname(__file__), "bookleaf_sample_data.json"),
         os.path.abspath("bookleaf_sample_data.json"),
-        os.path.abspath("../bookleaf_sample_data.json"),
-        r"c:\Users\chand\Music\bookleaf\bookleaf_sample_data.json"
+        os.path.abspath(os.path.join("backend", "bookleaf_sample_data.json")),
+        os.path.abspath(os.path.join("backend", "app", "data", "bookleaf_sample_data.json")),
     ]
     json_path = None
     for cand in candidates:

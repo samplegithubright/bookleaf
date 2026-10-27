@@ -4,7 +4,7 @@ import React, { useEffect, useState, useRef, Suspense } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
-import { Ticket, fetchApi } from "@/lib/api";
+import { Ticket, fetchApi, getWebSocketUrl } from "@/lib/api";
 import { PriorityBadge, StatusBadge, CategoryBadge } from "@/components/TicketBadge";
 import { 
   ArrowLeft, 
@@ -30,7 +30,7 @@ export default function AuthorTicketDetailPage() {
 function AuthorTicketDetailContent() {
   const params = useParams();
   const ticketId = params.id as string;
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
   const router = useRouter();
 
   const [ticket, setTicket] = useState<Ticket | null>(null);
@@ -53,13 +53,14 @@ function AuthorTicketDetailContent() {
   };
 
   useEffect(() => {
+    if (isLoading || !user || !ticketId) return;
     loadTicket();
-  }, [ticketId]);
+  }, [ticketId, user, isLoading]);
 
   useEffect(() => {
     // Setup WebSocket connection to this specific ticket
     if (ticket?.id) {
-      const wsUrl = `ws://localhost:8000/api/v1/ws/ticket/${ticket.id}`;
+      const wsUrl = getWebSocketUrl(`/ws/ticket/${ticket.id}`);
       const ws = new WebSocket(wsUrl);
       socketRef.current = ws;
 
