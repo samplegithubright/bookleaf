@@ -1,25 +1,33 @@
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+function getApiBaseUrl(): string {
+  let url = (process.env.NEXT_PUBLIC_API_URL || "").trim();
+  if (!url) {
+    return "http://localhost:8000/api/v1";
+  }
+  // Strip trailing slashes
+  url = url.replace(/\/+$/, "");
+  // If the user provided the root Render domain without /api/v1, append it automatically
+  if (!url.endsWith("/api/v1")) {
+    url = `${url}/api/v1`;
+  }
+  return url;
+}
+
+export const API_BASE_URL = getApiBaseUrl();
 
 export function getWebSocketUrl(path: string): string {
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+
   // Explicit WebSocket URL override
   if (process.env.NEXT_PUBLIC_WS_URL) {
-    const base = process.env.NEXT_PUBLIC_WS_URL.replace(/\/$/, "");
-    const cleanPath = path.startsWith("/") ? path : `/${path}`;
+    const base = process.env.NEXT_PUBLIC_WS_URL.trim().replace(/\/+$/, "");
     return `${base}${cleanPath}`;
   }
 
   // Derive WebSocket URL from API_BASE_URL (http -> ws, https -> wss)
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, "");
-    const wsProto = apiUrl.startsWith("https://") ? "wss://" : "ws://";
-    const hostAndPath = apiUrl.replace(/^https?:\/\//, "");
-    const cleanPath = path.startsWith("/") ? path : `/${path}`;
-    return `${wsProto}${hostAndPath}${cleanPath}`;
-  }
-
-  // Fallback to local development
-  const cleanPath = path.startsWith("/") ? path : `/${path}`;
-  return `ws://localhost:8000/api/v1${cleanPath}`;
+  const apiUrl = API_BASE_URL.replace(/\/+$/, "");
+  const wsProto = apiUrl.startsWith("https://") ? "wss://" : "ws://";
+  const hostAndPath = apiUrl.replace(/^https?:\/\//, "");
+  return `${wsProto}${hostAndPath}${cleanPath}`;
 }
 
 export interface User {
@@ -110,10 +118,18 @@ export async function fetchApi<T>(
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    ...options,
-    headers,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      ...options,
+      headers,
+    });
+  } catch (netErr: any) {
+    if (typeof window !== "undefined" && API_BASE_URL.includes("localhost") && window.location.hostname !== "localhost") {
+      throw new Error(`Backend connection error: NEXT_PUBLIC_API_URL is currently pointing to "${API_BASE_URL}". Please configure NEXT_PUBLIC_API_URL in your Vercel Environment Variables to your Render backend URL and redeploy.`);
+    }
+    throw new Error(`Unable to reach backend server at ${API_BASE_URL}. If your Render service is on the free tier, it may take ~45-60 seconds to spin up from sleep. Please check Render logs or try again shortly.`);
+  }
 
   if (!response.ok) {
     if (response.status === 401 && typeof window !== "undefined" && !endpoint.includes("/auth/login")) {

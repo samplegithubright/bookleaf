@@ -10,9 +10,26 @@ logger = logging.getLogger("bookleaf.seed")
 
 async def seed_database_if_empty(force: bool = False):
     db = get_database()
+
+    # 1. ALWAYS guarantee default Super Admin user exists
+    try:
+        admin_user = {
+            "email": "admin@bookleaf.com",
+            "hashed_password": get_password_hash("admin123"),
+            "name": "BookLeaf Ops Admin",
+            "role": "admin",
+            "is_admin": True,
+            "created_at": datetime.utcnow()
+        }
+        await db.users.update_one({"email": admin_user["email"]}, {"$set": admin_user}, upsert=True)
+        logger.info("Admin user verified: admin@bookleaf.com / admin123")
+    except Exception as e:
+        logger.warning(f"Could not verify admin user: {e}")
+
     author_count = await db.authors.count_documents({})
-    if author_count > 0 and not force:
-        logger.info(f"Database already contains {author_count} authors. Skipping seed.")
+    user_count = await db.users.count_documents({"role": "author"})
+    if author_count > 0 and user_count > 0 and not force:
+        logger.info(f"Database already contains {author_count} authors and {user_count} author accounts. Skipping seed.")
         return
 
     logger.info("Starting database seed with bookleaf_sample_data.json...")

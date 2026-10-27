@@ -13,7 +13,11 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 @router.post("/login", response_model=Token)
 async def login(login_data: UserLogin):
     db = get_database()
-    user = await db.users.find_one({"email": login_data.email.lower().strip()})
+    email_query = login_data.email.lower().strip()
+    if email_query == "admin":
+        email_query = "admin@bookleaf.com"
+        
+    user = await db.users.find_one({"email": email_query})
     if not user or not verify_password(login_data.password, user.get("hashed_password", "")):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
